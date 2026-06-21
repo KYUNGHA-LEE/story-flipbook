@@ -1,0 +1,93 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: books
+// Document ID: auto-generated
+// Fields:
+//   - title: string (required, 1-100 chars) - The title of the flipbook
+//   - createdAt: timestamp (required) - When the book was created
+//   - authorUid: string (optional) - UID of the creator
+//
+// Subcollection: books/{bookId}/pages
+// Document ID: auto-generated
+// Fields:
+//   - pageNumber: number (required, >= 0) - The order of the page
+//   - imageData: string (required, 1-1048576 chars) - Base64/DataURL of the image
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "leethemom8@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidBook(data) {
+      return hasRequiredFields(['title', 'createdAt']) &&
+             hasOnlyAllowedFields(['title', 'createdAt', 'authorUid']) &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 100 &&
+             data.createdAt is timestamp &&
+             (!('authorUid' in data) || (data.authorUid is string && data.authorUid == request.auth.uid));
+    }
+
+    function isValidPage(data) {
+      return hasRequiredFields(['pageNumber', 'imageData']) &&
+             hasOnlyAllowedFields(['pageNumber', 'imageData']) &&
+             data.pageNumber is int && data.pageNumber >= 0 &&
+             data.imageData is string && data.imageData.size() > 0 && data.imageData.size() <= 1048576;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /books/{bookId} {
+      // Initially restricted: only authenticated users can read/write
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidBook(request.resource.data);
+      allow update, delete: if isAdmin() || (isAuthenticated() && resource.data.authorUid == request.auth.uid);
+
+      match /pages/{pageId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated() && isValidPage(request.resource.data);
+        allow update, delete: if isAdmin() || (isAuthenticated() && get(/databases/$(database)/documents/books/$(bookId)).data.authorUid == request.auth.uid);
+      }
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create, update: if isAdmin();
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

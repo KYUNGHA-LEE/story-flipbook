@@ -1,0 +1,5 @@
+{
+  "name": "3D 동화책 플립북",
+  "description": "이미지를 업로드하여 실제 책처럼 넘겨볼 수 있는 3D 플립북으로 변환해주는 앱입니다.",
+  "requestFramePermissions": []
+}
