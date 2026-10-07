@@ -15,7 +15,7 @@ const Page = forwardRef<HTMLDivElement, PageProps>((props, ref) => {
         <img
           src={props.image}
           alt="Book Page"
-          className="w-full h-full object-fill select-none pointer-events-none"
+          className="w-full h-full object-contain select-none pointer-events-none"
           referrerPolicy="no-referrer"
         />
       ) : (
@@ -36,24 +36,57 @@ export interface FlipBookRef {
   next: () => void;
 }
 
+const DEFAULT_RATIO = 1.4; // 이미지 크기를 읽지 못했을 때 쓰는 기본 비율 (세로형)
+
+// 이미지들의 (세로/가로) 비율 중 가장 많은 비율을 책 한 페이지의 비율로 선택
+// (표지만 비율이 달라도 나머지 이미지에 맞춰지도록, 동률이면 앞쪽 이미지 우선)
+const pickBookRatio = (ratios: number[]) => {
+  const valid = ratios.filter(r => Number.isFinite(r) && r > 0);
+  if (valid.length === 0) return DEFAULT_RATIO;
+
+  let best = valid[0];
+  let bestCount = 0;
+  for (const r of valid) {
+    const count = valid.filter(o => Math.abs(o - r) / r < 0.03).length;
+    if (count > bestCount) {
+      best = r;
+      bestCount = count;
+    }
+  }
+  return best;
+};
+
 export const FlipBook = forwardRef<FlipBookRef, FlipBookProps>(({ images }, ref) => {
   const bookRef = useRef<any>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [windowSize, setWindowSize] = useState({ width: window.innerWidth, height: window.innerHeight });
-  const [aspectRatio, setAspectRatio] = useState(1.4); // 기본값 (세로형)
+  const [aspectRatio, setAspectRatio] = useState<number | null>(null); // null = 이미지 크기 측정 중
   const [currentPage, setCurrentPage] = useState(0);
   const [totalPageCount, setTotalPageCount] = useState(images.length);
 
-  // 이미지 비율 자동 맞춤을 위해 첫 번째 이미지 로드
+  // 이미지 원본 비율에 책 크기를 자동으로 맞추기 위해 모든 이미지의 크기를 먼저 읽는다.
+  // 측정이 끝나기 전에 책을 만들면 잘못된 크기로 고정되므로, 끝난 뒤에 책을 그린다.
   useEffect(() => {
-    if (images.length > 0) {
-      const img = new Image();
-      img.src = images[0];
-      img.onload = () => {
-        const ratio = img.height / img.width;
-        setAspectRatio(ratio);
-      };
-    }
+    let cancelled = false;
+    setAspectRatio(null);
+
+    Promise.all(
+      images.map(
+        src =>
+          new Promise<number>(resolve => {
+            const img = new Image();
+            img.onload = () => resolve(img.naturalHeight / img.naturalWidth);
+            img.onerror = () => resolve(0);
+            img.src = src;
+          })
+      )
+    ).then(ratios => {
+      if (!cancelled) setAspectRatio(pickBookRatio(ratios));
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [images]);
 
   // 화면 크기 감지 및 모바일 모드 전환 (768px 미만일 때 단일 페이지 모드)
@@ -91,24 +124,28 @@ export const FlipBook = forwardRef<FlipBookRef, FlipBookProps>(({ images }, ref)
     bookRef.current?.pageFlip()?.turnToPage(0);
   };
 
-  // 기기 환경에 따른 책의 크기(너비, 높이) 계산
-  const getBookSize = () => {
-    const maxWidth = isMobile ? windowSize.width * 0.95 : windowSize.width * 0.45;
-    const maxHeight = windowSize.height * 0.8;
-    
-    let w = Math.min(maxWidth, 600);
-    let h = w * aspectRatio;
-    
-    // 높이가 너무 크면 높이 기준으로 너비 재조정
-    if (h > maxHeight) {
-      h = maxHeight;
-      w = h / aspectRatio;
-    }
-    
-    return { width: Math.floor(w), height: Math.floor(h) };
+  // 이미지 비율은 그대로 두고, 화면에 들어가는 가장 큰 한 페이지 크기(너비, 높이) 계산
+  // (PC는 두 페이지를 나란히 펼치고 좌우에 화살표 영역이 필요하므로 그만큼 빼고 계산)
+  const getBookSize = (ratio: number) => {
+    const maxPageWidth = isMobile ? windowSize.width * 0.95 : (windowSize.width - 240) / 2;
+    const maxPageHeight = windowSize.height * 0.8;
+
+    // 너비 기준과 높이 기준 중 더 작은 쪽에 맞춘다 (가로형·세로형·정사각형 모두 동일하게 적용)
+    const w = Math.min(maxPageWidth, maxPageHeight / ratio, 900);
+
+    return { width: Math.floor(w), height: Math.floor(w * ratio) };
   };
 
-  const size = getBookSize();
+  // 이미지 크기 측정 중에는 책을 만들지 않는다
+  if (aspectRatio === null) {
+    return (
+      <div className="flex items-center justify-center w-full h-full py-24 text-slate-400 text-sm">
+        책을 준비하는 중입니다...
+      </div>
+    );
+  }
+
+  const size = getBookSize(aspectRatio);
 
   // 마지막 페이지 여부 확인 (표지 포함 고려)
   // react-pageflip에서 showCover: true인 경우 페이지 인덱스 계산이 달라질 수 있음
@@ -119,7 +156,7 @@ export const FlipBook = forwardRef<FlipBookRef, FlipBookProps>(({ images }, ref)
       <div className="relative shadow-2xl rounded-lg overflow-visible">
         {/* @ts-ignore */}
         <HTMLFlipBook
-          key={isMobile ? 'mobile' : 'desktop'}
+          key={`${isMobile ? 'mobile' : 'desktop'}-${aspectRatio.toFixed(3)}`}
           width={size.width}
           height={size.height}
           size="fixed"
