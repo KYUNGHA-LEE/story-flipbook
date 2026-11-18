@@ -1,5 +1,9 @@
 // 플립북을 JSON 파일로 저장하고 다시 불러오는 도구
-// 이미지는 base64(data URL)로 JSON 안에 그대로 담기 때문에 파일 하나만 있으면 같은 책을 다시 열 수 있다.
+// 이미지는 base64(data URL)로 JSON 안에 담기 때문에 파일 하나만 있으면 같은 책을 다시 열 수 있다.
+// 저장할 때 그림은 "링크 만들기"와 같은 크기로 줄여 담는다(2026-11-18) — 원본 PNG 를 그대로 담으면
+// 4~5쪽짜리 책도 20~30MB 가 되어 주고받기가 아주 느렸다. 파일 형식(version 1)은 그대로라 예전 파일도 열린다.
+import { shrinkImage } from './shrinkImage';
+import { IMAGE_MAX_EDGE, IMAGE_QUALITY } from '../../shared/share-config.js';
 
 export const BOOK_FORMAT = 'story-flipbook';
 export const BOOK_VERSION = 1;
@@ -40,8 +44,22 @@ const pad = (n: number) => String(n).padStart(2, '0');
 export const makeFileName = (date = new Date()) =>
   `플립북_${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}_${pad(date.getHours())}${pad(date.getMinutes())}.json`;
 
-// 현재 책을 JSON 파일로 내려받는다
-export const savePagesAsJson = async (pages: BookPage[]) => {
+// 그림 한 장을 JSON 에 넣을 크기로 줄인다.
+// 움직이는 GIF 는 JPEG 으로 바꾸면 멈춘 그림이 되므로 그대로 두고, 줄이지 못한 그림(읽을 수 없는 형식 등)도 원본 그대로 넣는다.
+const shrinkForSave = async (blob: Blob): Promise<Blob> => {
+  if (blob.type === 'image/gif') return blob;
+  try {
+    return (await shrinkImage(blob, IMAGE_MAX_EDGE, IMAGE_QUALITY)).blob;
+  } catch {
+    return blob;
+  }
+};
+
+// 현재 책을 JSON 파일로 내려받는다. 받은 파일의 크기(바이트)를 돌려준다.
+export const savePagesAsJson = async (
+  pages: BookPage[],
+  onProgress?: (done: number, total: number) => void
+): Promise<{ bytes: number }> => {
   // 페이지를 하나씩 문자열로 만들어 Blob 에 이어 붙인다 (큰 책도 하나의 거대한 문자열을 만들지 않도록)
   const parts: string[] = [
     `{"format":${JSON.stringify(BOOK_FORMAT)},"version":${BOOK_VERSION},"savedAt":${JSON.stringify(
@@ -51,12 +69,15 @@ export const savePagesAsJson = async (pages: BookPage[]) => {
 
   for (let i = 0; i < pages.length; i++) {
     const { name, blob } = pages[i];
-    const saved: SavedPage = { name, type: blob.type, data: await readAsDataURL(blob) };
+    const small = await shrinkForSave(blob);
+    const saved: SavedPage = { name, type: small.type || blob.type, data: await readAsDataURL(small) };
     parts.push((i > 0 ? ',' : '') + JSON.stringify(saved));
+    onProgress?.(i + 1, pages.length);
   }
   parts.push(']}');
 
-  const fileUrl = URL.createObjectURL(new Blob(parts, { type: 'application/json' }));
+  const file = new Blob(parts, { type: 'application/json' });
+  const fileUrl = URL.createObjectURL(file);
   const link = document.createElement('a');
   link.href = fileUrl;
   link.download = makeFileName();
@@ -65,6 +86,7 @@ export const savePagesAsJson = async (pages: BookPage[]) => {
   link.remove();
   // 다운로드가 시작될 시간을 준 뒤 주소 해제
   setTimeout(() => URL.revokeObjectURL(fileUrl), 10_000);
+  return { bytes: file.size };
 };
 
 // 저장해 둔 JSON 파일을 읽어 페이지 목록으로 되돌린다. 형식이 맞지 않으면 사유를 담은 Error 를 던진다.

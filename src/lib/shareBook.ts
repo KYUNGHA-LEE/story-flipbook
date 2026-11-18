@@ -3,6 +3,7 @@
 // - 열 때: 링크의 책 번호로 파일 주소를 알아내 → 파일을 받아 → 쪽으로 다시 나눈다
 // 책 한 권을 파일 하나로 묶는 이유: 저장소 무료 한도가 "올리기 횟수"로도 걸려 있어서, 쪽마다 따로 올리면 금방 찬다.
 import type { BookPage } from './bookFile';
+import { shrinkImage, ImageReadError, type ShrunkImage } from './shrinkImage';
 import {
   BOOK_MAGIC,
   BOOK_ID_RE,
@@ -81,66 +82,12 @@ export const idFromLocation = (): string | null => new URLSearchParams(location.
 
 // ---------- 그림 줄이기 ----------
 
-interface Drawable {
-  source: CanvasImageSource;
-  width: number;
-  height: number;
-  close: () => void;
-}
-
-const decodeImage = async (blob: Blob): Promise<Drawable> => {
-  if (typeof createImageBitmap === 'function') {
-    try {
-      const bmp = await createImageBitmap(blob, { imageOrientation: 'from-image' });
-      return { source: bmp, width: bmp.width, height: bmp.height, close: () => bmp.close() };
-    } catch {
-      /* 아래 <img> 방식으로 다시 시도 */
-    }
-  }
-  const url = URL.createObjectURL(blob);
+// 그림 한 장을 올리기 알맞게 줄인다 (줄이는 방법은 "JSON으로 저장"과 같다 — src/lib/shrinkImage.ts)
+const shrinkForShare = async (blob: Blob): Promise<ShrunkImage> => {
   try {
-    const img = new Image();
-    img.src = url;
-    await img.decode();
-    return { source: img, width: img.naturalWidth, height: img.naturalHeight, close: () => {} };
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-};
-
-const KEEP_AS_IS_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-const KEEP_AS_IS_BYTES = 350 * 1024;
-
-// 그림 한 장을 올리기 알맞게 줄인다. 이미 작으면 그대로 쓴다.
-const shrinkImage = async (blob: Blob): Promise<{ blob: Blob; w: number; h: number }> => {
-  const img = await decodeImage(blob);
-  try {
-    if (!img.width || !img.height) throw new ShareError('bad-file');
-    const scale = Math.min(1, IMAGE_MAX_EDGE / Math.max(img.width, img.height));
-    const w = Math.max(1, Math.round(img.width * scale));
-    const h = Math.max(1, Math.round(img.height * scale));
-
-    if (scale === 1 && blob.size <= KEEP_AS_IS_BYTES && KEEP_AS_IS_TYPES.includes(blob.type)) {
-      return { blob, w, h };
-    }
-
-    const canvas = document.createElement('canvas');
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new ShareError('server');
-    ctx.fillStyle = '#ffffff';   // 투명한 부분은 흰 종이로
-    ctx.fillRect(0, 0, w, h);
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(img.source, 0, 0, w, h);
-
-    const out = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', IMAGE_QUALITY));
-    if (!out) throw new ShareError('server');
-    // 줄이지 않았는데 다시 만든 파일이 더 크면 원래 파일을 쓴다
-    if (scale === 1 && out.size >= blob.size && KEEP_AS_IS_TYPES.includes(blob.type)) return { blob, w, h };
-    return { blob: out, w, h };
-  } finally {
-    img.close();
+    return await shrinkImage(blob, IMAGE_MAX_EDGE, IMAGE_QUALITY);
+  } catch (err) {
+    throw new ShareError(err instanceof ImageReadError ? 'bad-file' : 'server');
   }
 };
 
@@ -240,7 +187,7 @@ export const buildBundle = async (pages: BookPage[], onProgress: (p: ShareProgre
 
   const items: { blob: Blob; w: number; h: number }[] = [];
   for (let i = 0; i < pages.length; i++) {
-    items.push(await shrinkImage(pages[i].blob));
+    items.push(await shrinkForShare(pages[i].blob));
     onProgress({ phase: 'prepare', done: i + 1, total: pages.length });
   }
 

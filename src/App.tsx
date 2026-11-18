@@ -12,6 +12,10 @@ import { idFromLocation, isShareAvailable, loadSharedBook, ShareError, shareErro
 // 머리글 오른쪽에 보이는 수정 날짜. 앱을 고칠 때마다 그날 날짜로 바꾼다.
 const UPDATED_DATE = '2026.11.18';
 
+// 파일 크기를 "3.2MB" / "850KB" 처럼 보여 준다
+const formatSize = (bytes: number) =>
+  bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.round(bytes / 1024))}KB`;
+
 // Error Boundary Component
 export class ErrorBoundary extends React.Component<any, any> {
   state: any;
@@ -62,6 +66,7 @@ export default function App() {
   const [pages, setPages] = useState<BookPage[]>([]);
   const [isReady, setIsReady] = useState(false);
   const [busy, setBusy] = useState<'save' | 'load' | null>(null);
+  const [saveProgress, setSaveProgress] = useState<string | null>(null); // JSON 저장 중 "줄인 쪽/전체 쪽"
   const [notice, setNotice] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
   const flipBookRef = useRef<FlipBookRef>(null);
   const loadInputRef = useRef<HTMLInputElement>(null);
@@ -144,18 +149,22 @@ export default function App() {
     replacePages([]);
   };
 
-  // 지금 책을 JSON 파일로 저장
+  // 지금 책을 JSON 파일로 저장 (그림은 화면에 알맞은 크기로 줄여 담는다)
   const handleSave = async () => {
     if (busy || pages.length === 0) return;
     setBusy('save');
     setNotice(null);
     try {
-      await savePagesAsJson(pages);
-      setNotice({ type: 'success', text: `${pages.length}장짜리 책을 JSON 파일로 저장했습니다. 다운로드 폴더를 확인해 주세요.` });
+      const { bytes } = await savePagesAsJson(pages, (done, total) => setSaveProgress(`${done}/${total}`));
+      setNotice({
+        type: 'success',
+        text: `${pages.length}장짜리 책을 JSON 파일(${formatSize(bytes)})로 저장했습니다. 다운로드 폴더를 확인해 주세요.`,
+      });
     } catch (err) {
       setNotice({ type: 'error', text: err instanceof Error ? err.message : '저장하지 못했습니다.' });
     } finally {
       setBusy(null);
+      setSaveProgress(null);
     }
   };
 
@@ -227,10 +236,11 @@ export default function App() {
               <button
                 onClick={handleSave}
                 disabled={busy !== null}
+                title="그림을 화면에 알맞은 크기로 줄여 파일 하나로 저장합니다"
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 border border-blue-600 rounded-lg text-sm font-medium text-white hover:bg-blue-700 transition-all shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <Download className="w-4 h-4" />
-                {busy === 'save' ? '저장 중...' : 'JSON으로 저장'}
+                {busy === 'save' ? `저장 중...${saveProgress ? ` ${saveProgress}` : ''}` : 'JSON으로 저장'}
               </button>
               {(shareEnabled || shared) && (
                 <button
