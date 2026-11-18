@@ -89,13 +89,62 @@ export const savePagesAsJson = async (
   return { bytes: file.size };
 };
 
+// 파일 이름이나 종류로 "저장한 책(JSON)"인지 본다 (업로드 상자에 JSON 을 넣어도 열어 주려고)
+export const isJsonFile = (file: File) => file.type === 'application/json' || /\.json$/i.test(file.name);
+
+// 끝이 잘린 플립북 JSON(끝까지 받아지지 않은 파일)에서 온전한 쪽만 꺼낸다.
+// 큰 파일은 받는 도중에 끊기는 일이 잦다(2026-11-18: 30~60MB 파일 9개 중 4개가 잘려 있었음).
+// 이 앱이 저장한 모양({"name":..,"type":..,"data":"data:image/..;base64,...."})만 다룬다. 플립북 파일이 아니면 null.
+const salvagePages = (text: string): SavedPage[] | null => {
+  if (!/^﻿?\s*\{\s*"format"\s*:\s*"story-flipbook"/.test(text.slice(0, 200))) return null;
+  const DATA_KEY = '"data":"';
+  let pos = text.indexOf('"pages":[');
+  if (pos < 0) return null;
+  pos += '"pages":['.length;
+
+  const found: SavedPage[] = [];
+  while (pos < text.length) {
+    if (text[pos] === ',') pos++;
+    if (text[pos] !== '{') break;
+    const dataKey = text.indexOf(DATA_KEY, pos);
+    if (dataKey < 0) break;
+    const dataStart = dataKey + DATA_KEY.length;
+    const dataEnd = text.indexOf('"', dataStart); // base64 에는 따옴표가 없으므로 다음 따옴표가 그림의 끝
+    if (dataEnd < 0 || text[dataEnd + 1] !== '}') break; // 이 쪽은 끝까지 들어 있지 않다
+    let meta: any;
+    try {
+      meta = JSON.parse(text.slice(pos, dataStart) + '"}'); // 이름·종류만 읽는다
+    } catch {
+      break;
+    }
+    found.push({ name: meta?.name, type: meta?.type, data: text.slice(dataStart, dataEnd) });
+    pos = dataEnd + 2;
+  }
+  return found;
+};
+
+export interface LoadedBook {
+  pages: BookPage[];
+  incomplete: boolean; // true = 끝이 잘린 파일이라 온전한 쪽까지만 열었다
+}
+
 // 저장해 둔 JSON 파일을 읽어 페이지 목록으로 되돌린다. 형식이 맞지 않으면 사유를 담은 Error 를 던진다.
-export const loadPagesFromJson = async (file: File): Promise<BookPage[]> => {
+export const loadPagesFromJson = async (file: File): Promise<LoadedBook> => {
   let parsed: any;
+  let incomplete = false;
+  const text = await file.text();
   try {
-    parsed = JSON.parse(await file.text());
+    parsed = JSON.parse(text);
   } catch {
-    throw new Error('JSON 파일을 읽지 못했습니다. 이 앱에서 저장한 파일이 맞는지 확인해 주세요.');
+    const salvaged = salvagePages(text);
+    if (salvaged === null) {
+      throw new Error('JSON 파일을 읽지 못했습니다. 이 앱에서 "JSON으로 저장"한 파일이 맞는지 확인해 주세요.');
+    }
+    if (salvaged.length === 0) {
+      throw new Error('끝까지 받아지지 않은 파일이라 열 수 있는 쪽이 없습니다. 파일을 다시 받아 주세요.');
+    }
+    parsed = { format: BOOK_FORMAT, version: BOOK_VERSION, pages: salvaged };
+    incomplete = true;
   }
 
   if (!parsed || parsed.format !== BOOK_FORMAT || !Array.isArray(parsed.pages)) {
@@ -127,5 +176,5 @@ export const loadPagesFromJson = async (file: File): Promise<BookPage[]> => {
     revokePages(pages);
     throw err;
   }
-  return pages;
+  return { pages, incomplete };
 };

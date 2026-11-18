@@ -6,7 +6,7 @@ import { ShareDialog } from './components/ShareDialog';
 import { MySiteGuide } from './components/MySiteGuide';
 import { BookOpen, RefreshCw, AlertCircle, Download, FolderOpen, Link2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { BookPage, filesToPages, revokePages, savePagesAsJson, loadPagesFromJson } from './lib/bookFile';
+import { BookPage, filesToPages, revokePages, savePagesAsJson, loadPagesFromJson, isJsonFile } from './lib/bookFile';
 import { idFromLocation, isShareAvailable, loadSharedBook, ShareError, shareErrorText, type SharedInfo } from './lib/shareBook';
 
 // 머리글 오른쪽에 보이는 수정 날짜. 앱을 고칠 때마다 그날 날짜로 바꾼다.
@@ -134,7 +134,13 @@ export default function App() {
   const handleImagesSelected = (files: File[]) => {
     const imageFiles = files.filter(file => file.type.startsWith('image/'));
     if (imageFiles.length === 0) {
-      setNotice({ type: 'error', text: '이미지 파일을 선택해 주세요.' });
+      // 업로드 상자에 저장한 책(JSON)을 넣은 경우: 거절하지 않고 그 책을 연다
+      const jsonFile = files.find(isJsonFile);
+      if (jsonFile) {
+        void loadBookFile(jsonFile);
+        return;
+      }
+      setNotice({ type: 'error', text: '이미지 파일이나 저장한 책(JSON) 파일을 선택해 주세요.' });
       return;
     }
     setNotice(null);
@@ -168,23 +174,34 @@ export default function App() {
     }
   };
 
-  // 저장해 둔 JSON 파일 불러오기
-  const handleLoadFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = ''; // 같은 파일을 다시 골라도 불러오기가 동작하도록 초기화
-    if (!file || busy) return;
-
+  // 저장해 둔 JSON 파일 하나를 열어 책으로 펼친다 ([불러오기] 버튼과 업로드 상자가 함께 쓴다)
+  const loadBookFile = async (file: File) => {
+    if (busy) return;
     setBusy('load');
     setNotice(null);
     try {
-      const loaded = await loadPagesFromJson(file);
+      const { pages: loaded, incomplete } = await loadPagesFromJson(file);
       forgetShared();
       replacePages(loaded);
+      if (incomplete) {
+        // 끝이 잘린 파일: 온전한 쪽까지만 열렸다는 것을 분명히 알린다
+        setNotice({
+          type: 'error',
+          text: `끝까지 받아지지 않은 파일입니다. 온전한 ${loaded.length}쪽까지만 열었고, ${loaded.length + 1}쪽부터는 파일에 없습니다. 책 전체를 보려면 파일을 다시 받아 주세요.`,
+        });
+      }
     } catch (err) {
       setNotice({ type: 'error', text: err instanceof Error ? err.message : '불러오지 못했습니다.' });
     } finally {
       setBusy(null);
     }
+  };
+
+  // [불러오기] 버튼으로 고른 JSON 파일
+  const handleLoadFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // 같은 파일을 다시 골라도 불러오기가 동작하도록 초기화
+    if (file) void loadBookFile(file);
   };
 
   // 키보드 네비게이션 지원
