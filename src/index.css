@@ -11,9 +11,10 @@
 }
 
 /* FlipBook 커스텀 스타일 */
+/* 책 전체(두 쪽 너비)에는 배경·그림자를 주지 않는다. 표지가 한 장만 보일 때 옆의 빈자리가 빈 쪽처럼 보이기 때문.
+   그림자는 쪽마다(Page 의 shadow-lg) 따로 진다. */
 .flip-book {
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-  background-color: #f1f5f9;
+  background-color: transparent;
 }
 
 /* 페이지 그림자 효과 */

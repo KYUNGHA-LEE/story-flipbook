@@ -220,7 +220,7 @@ export default function App() {
   }, [isReady]);
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-900 font-sans selection:bg-blue-100">
+    <div className="min-h-screen bg-[#f8fafc] text-slate-900 font-sans selection:bg-blue-100 overflow-x-clip">
       {/* 배경 장식 */}
       <div className="fixed inset-0 -z-10 overflow-hidden">
         <div className="absolute -top-[10%] -left-[10%] w-[40%] h-[40%] bg-blue-50 rounded-full blur-3xl opacity-50" />
