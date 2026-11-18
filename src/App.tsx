@@ -2,9 +2,12 @@ import * as React from 'react';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { ImageUpload } from './components/ImageUpload';
 import { FlipBook, FlipBookRef } from './components/FlipBook';
-import { BookOpen, RefreshCw, AlertCircle, Download, FolderOpen } from 'lucide-react';
+import { ShareDialog } from './components/ShareDialog';
+import { MySiteGuide } from './components/MySiteGuide';
+import { BookOpen, RefreshCw, AlertCircle, Download, FolderOpen, Link2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { BookPage, filesToPages, revokePages, savePagesAsJson, loadPagesFromJson } from './lib/bookFile';
+import { idFromLocation, isShareAvailable, loadSharedBook, ShareError, shareErrorText, type SharedInfo } from './lib/shareBook';
 
 // 머리글 오른쪽에 보이는 수정 날짜. 앱을 고칠 때마다 그날 날짜로 바꾼다.
 const UPDATED_DATE = '2026.11.18';
@@ -63,6 +66,32 @@ export default function App() {
   const flipBookRef = useRef<FlipBookRef>(null);
   const loadInputRef = useRef<HTMLInputElement>(null);
 
+  // 링크 공유: shared = 지금 열린 책의 링크(내가 방금 만들었거나, 링크로 들어와서 연 책)
+  const [shared, setShared] = useState<SharedInfo | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [sharedLoading, setSharedLoading] = useState(() => idFromLocation() !== null);
+  const sharedLoadStarted = useRef(false);
+
+  // 링크 저장소는 "이 사이트를 올린 사람"의 것만 쓴다. 저장소가 연결된 사이트에서만 [링크 만들기] 버튼을 보인다.
+  // null = 아직 확인 중, false = 저장소 없음(원본 사이트 등)
+  const [shareEnabled, setShareEnabled] = useState<boolean | null>(null);
+  useEffect(() => {
+    let alive = true;
+    isShareAvailable().then(ok => {
+      if (alive) setShareEnabled(ok);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // 주소 뒤에 ?mysite 를 붙여 열면 "내 사이트 만들기" 안내를 보여 준다
+  const [guideOpen, setGuideOpen] = useState(() => new URLSearchParams(window.location.search).has('mysite'));
+  const closeGuide = () => {
+    window.history.replaceState(null, '', window.location.pathname);
+    setGuideOpen(false);
+  };
+
   // 플립북은 images 배열이 바뀔 때마다 책 크기를 다시 재므로, 페이지가 바뀔 때만 새 배열을 만든다
   const images = useMemo(() => pages.map(page => page.url), [pages]);
 
@@ -73,6 +102,29 @@ export default function App() {
     setIsReady(next.length > 0);
   };
 
+  // 다른 책으로 바뀌면 앞 책의 링크 정보는 버리고, 주소의 책 번호(?b=)도 지운다
+  const forgetShared = () => {
+    setShared(null);
+    if (idFromLocation() !== null) window.history.replaceState(null, '', window.location.pathname);
+  };
+
+  // 주소에 책 번호가 있으면(링크로 들어온 경우) 그 책을 받아 바로 펼친다
+  useEffect(() => {
+    const id = idFromLocation();
+    if (id === null || sharedLoadStarted.current) return;
+    sharedLoadStarted.current = true;
+    loadSharedBook(id)
+      .then(({ pages: loaded, info }) => {
+        setPages(loaded);
+        setIsReady(true);
+        setShared(info);
+      })
+      .catch(err => {
+        setNotice({ type: 'error', text: err instanceof ShareError ? err.message : shareErrorText('server') });
+      })
+      .finally(() => setSharedLoading(false));
+  }, []);
+
   // 이미지 파일들을 브라우저에서 접근 가능한 URL로 변환하여 상태에 저장
   const handleImagesSelected = (files: File[]) => {
     const imageFiles = files.filter(file => file.type.startsWith('image/'));
@@ -81,12 +133,14 @@ export default function App() {
       return;
     }
     setNotice(null);
+    forgetShared();
     replacePages(filesToPages(imageFiles));
   };
 
   // 다시 업로드하기
   const handleReset = () => {
     setNotice(null);
+    forgetShared();
     replacePages([]);
   };
 
@@ -114,7 +168,9 @@ export default function App() {
     setBusy('load');
     setNotice(null);
     try {
-      replacePages(await loadPagesFromJson(file));
+      const loaded = await loadPagesFromJson(file);
+      forgetShared();
+      replacePages(loaded);
     } catch (err) {
       setNotice({ type: 'error', text: err instanceof Error ? err.message : '불러오지 못했습니다.' });
     } finally {
@@ -176,6 +232,16 @@ export default function App() {
                 <Download className="w-4 h-4" />
                 {busy === 'save' ? '저장 중...' : 'JSON으로 저장'}
               </button>
+              {(shareEnabled || shared) && (
+                <button
+                  onClick={() => setShareOpen(true)}
+                  disabled={busy !== null}
+                  className="flex items-center gap-2 px-4 py-2 bg-white border border-blue-200 rounded-lg text-sm font-medium text-blue-700 hover:bg-blue-50 transition-all shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  <Link2 className="w-4 h-4" />
+                  {shared ? '링크 보기' : '링크 만들기'}
+                </button>
+              )}
               <button
                 onClick={() => loadInputRef.current?.click()}
                 disabled={busy !== null}
@@ -223,7 +289,29 @@ export default function App() {
 
       <main className="max-w-7xl mx-auto px-6 py-12 flex flex-col items-center justify-center min-h-[calc(100vh-160px)]">
         <AnimatePresence mode="wait">
-          {!isReady ? (
+          {guideOpen ? (
+            <motion.div
+              key="guide"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className="w-full flex flex-col items-center"
+            >
+              <MySiteGuide shareEnabled={shareEnabled} onClose={closeGuide} />
+            </motion.div>
+          ) : sharedLoading ? (
+            <motion.div
+              key="shared-loading"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              role="status"
+              className="flex flex-col items-center gap-4 text-slate-500"
+            >
+              <div className="w-10 h-10 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin" />
+              <p className="text-sm">링크의 책을 불러오는 중…</p>
+            </motion.div>
+          ) : !isReady ? (
             <motion.div
               key="upload"
               initial={{ opacity: 0, y: 20 }}
@@ -283,8 +371,17 @@ export default function App() {
         </AnimatePresence>
       </main>
 
+      {shareOpen && isReady && (
+        <ShareDialog pages={pages} shared={shared} onShared={setShared} onClose={() => setShareOpen(false)} />
+      )}
+
       <footer className="max-w-7xl mx-auto px-6 py-8 text-center text-slate-400 text-sm">
-        <p>© 2026 3D FlipBook Maker. 모든 이미지는 로컬에서만 처리됩니다.</p>
+        <p>
+          © 2026 3D FlipBook Maker.{' '}
+          {shareEnabled || shared
+            ? '이미지는 내 기기에서만 처리되고, [링크 만들기]를 누를 때만 인터넷에 올라갑니다.'
+            : '모든 이미지는 로컬에서만 처리됩니다.'}
+        </p>
       </footer>
     </div>
   );
