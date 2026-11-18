@@ -6,8 +6,8 @@ import { BookOpen, RefreshCw, AlertCircle, Download, FolderOpen } from 'lucide-r
 import { motion, AnimatePresence } from 'motion/react';
 import { BookPage, filesToPages, revokePages, savePagesAsJson, loadPagesFromJson } from './lib/bookFile';
 
-// 머리글에 보이는 제작일자 (GitHub 저장소에 처음 올린 날: 2026-06-21)
-const MADE_DATE = '2026.06.21';
+// 머리글 오른쪽에 보이는 수정 날짜. 앱을 고칠 때마다 그날 날짜로 바꾼다.
+const UPDATED_DATE = '2026.11.18';
 
 // Error Boundary Component
 export class ErrorBoundary extends React.Component<any, any> {
@@ -145,30 +145,27 @@ export default function App() {
         <div className="absolute -bottom-[10%] -right-[10%] w-[40%] h-[40%] bg-indigo-50 rounded-full blur-3xl opacity-50" />
       </div>
 
-      <header className="max-w-7xl mx-auto px-6 py-8 flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      {/* 머리글: 왼쪽 앱 이름, 오른쪽 제작자·수정 날짜. 좁은 화면에서는 버튼이 아랫줄로 내려간다 */}
+      <header className="max-w-7xl mx-auto px-6 py-8 flex flex-wrap items-center gap-x-4 gap-y-4">
+        <div className="flex items-center gap-3 mr-auto">
           <div className="p-2 bg-blue-600 rounded-xl shadow-lg shadow-blue-200">
             <BookOpen className="w-6 h-6 text-white" />
           </div>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-800">
-              FlipBook
-            </h1>
-            <p className="text-xs font-medium text-slate-500 break-keep">
-              Made by 이경하선생님 <span className="text-slate-400">· 제작일자 {MADE_DATE}</span>
-            </p>
-          </div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-800">
+            FlipBook
+          </h1>
         </div>
 
-        <div className="flex items-center gap-3">
-          {/* 저장해 둔 JSON 을 고르는 입력창 (업로드 화면·책 보기 화면의 불러오기 버튼이 함께 사용) */}
-          <input
-            ref={loadInputRef}
-            type="file"
-            accept=".json,application/json"
-            onChange={handleLoadFile}
-            className="hidden"
-          />
+        {/* 저장해 둔 JSON 을 고르는 입력창 (업로드 화면·책 보기 화면의 불러오기 버튼이 함께 사용) */}
+        <input
+          ref={loadInputRef}
+          type="file"
+          accept=".json,application/json"
+          onChange={handleLoadFile}
+          className="hidden"
+        />
+
+        <div className="order-last w-full flex flex-wrap items-center gap-3 md:order-none md:w-auto empty:hidden">
           {isReady && (
             <>
               <button
@@ -197,6 +194,11 @@ export default function App() {
               </button>
             </>
           )}
+        </div>
+
+        <div className="text-right text-xs text-slate-500 leading-snug whitespace-nowrap">
+          made by <b className="text-sm font-bold text-slate-600">이경하</b>
+          <span className="block mt-0.5 text-[11px] text-slate-400">Claude 수정 · {UPDATED_DATE}</span>
         </div>
       </header>
 
