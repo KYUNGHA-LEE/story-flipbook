@@ -6,6 +6,9 @@ import { BookOpen, RefreshCw, AlertCircle, Download, FolderOpen } from 'lucide-r
 import { motion, AnimatePresence } from 'motion/react';
 import { BookPage, filesToPages, revokePages, savePagesAsJson, loadPagesFromJson } from './lib/bookFile';
 
+// 머리글에 보이는 제작일자 (GitHub 저장소에 처음 올린 날: 2026-06-21)
+const MADE_DATE = '2026.06.21';
+
 // Error Boundary Component
 export class ErrorBoundary extends React.Component<any, any> {
   state: any;
@@ -151,7 +154,9 @@ export default function App() {
             <h1 className="text-2xl font-bold tracking-tight text-slate-800">
               FlipBook
             </h1>
-            <p className="text-xs font-medium text-slate-500">Made by 이경하선생님</p>
+            <p className="text-xs font-medium text-slate-500 break-keep">
+              Made by 이경하선생님 <span className="text-slate-400">· 제작일자 {MADE_DATE}</span>
+            </p>
           </div>
         </div>
 
