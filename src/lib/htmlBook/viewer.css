@@ -1,0 +1,159 @@
+/* "HTML로 저장"한 책 파일 안에 그대로 들어가는 모양. (앱 화면의 모양이 아니다 — 앱은 src/index.css) */
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  font-family: "Pretendard", "Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+/* 쪽 그림 목록. 스크립트가 돌지 않는 곳(일부 휴대폰 미리보기 등)에서는 이 목록이 위에서 아래로 그대로 보인다. */
+#pages { max-width: 900px; margin: 0 auto; padding: 16px; }
+#pages img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto 16px;
+  background: #fff;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, .1), 0 4px 6px -4px rgba(0, 0, 0, .1);
+}
+
+/* 스크립트가 돌면(html.js) 목록은 숨기고 넘기는 책으로 보여 준다 */
+html.js #pages { display: none; }
+html.js body { overflow-x: hidden; }
+
+#stage {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 0;
+  /* 표지 한 장일 때 책 틀이 반 쪽만큼 옆으로 나가는데, 그 빈 부분 때문에 가로로 밀리지 않게 한다 */
+  overflow-x: clip;
+}
+#notice {
+  max-width: 90%;
+  margin: 0 0 16px;
+  padding: 10px 16px;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 14px;
+  line-height: 1.5;
+  text-align: center;
+}
+#shifter { position: relative; transition: transform .6s ease; }
+.flip-book { margin: 0 auto; background: transparent; }
+
+.page {
+  background: #fff;
+  overflow: hidden;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, .1), 0 4px 6px -4px rgba(0, 0, 0, .1);
+}
+.page img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  -webkit-user-select: none;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* 휴대폰(한 장씩 보기)의 마지막 "끝" 쪽 */
+.end {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 20px;
+  background: #f8fafc;
+  text-align: center;
+}
+.end .mark {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: #dbeafe;
+  color: #2563eb;
+  font-size: 34px;
+  line-height: 64px;
+}
+.end h2 { margin: 0; font-size: 20px; color: #1e293b; }
+.end p { margin: 0; font-size: 14px; color: #64748b; }
+.end button {
+  margin-top: 6px;
+  padding: 12px 26px;
+  border: 0;
+  border-radius: 999px;
+  background: #2563eb;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* PC 의 이전·다음 화살표 (책 양옆) */
+.nav {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.nav.prev { left: -100px; }
+.nav.next { right: -100px; }
+.nav span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  color: #94a3b8;
+  transition: background .2s, color .2s, box-shadow .2s;
+}
+.nav:hover span, .nav:focus-visible span {
+  background: #fff;
+  color: #475569;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, .12);
+}
+.nav svg { width: 32px; height: 32px; }
+
+#hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px 24px;
+  min-height: 38px;
+  margin-top: 24px;
+  padding: 0 16px;
+  color: #94a3b8;
+  font-size: 14px;
+  text-align: center;
+}
+#home {
+  padding: 8px 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  background: #fff;
+  color: #475569;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .06);
+}
+#home:hover { background: #f8fafc; color: #2563eb; }
+[hidden] { display: none !important; }

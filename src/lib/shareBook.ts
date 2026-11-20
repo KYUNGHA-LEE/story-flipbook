@@ -82,7 +82,7 @@ export const idFromLocation = (): string | null => new URLSearchParams(location.
 
 // ---------- 그림 줄이기 ----------
 
-// 그림 한 장을 올리기 알맞게 줄인다 (줄이는 방법은 "JSON으로 저장"과 같다 — src/lib/shrinkImage.ts)
+// 그림 한 장을 올리기 알맞게 줄인다 (줄이는 방법은 "HTML로 저장"과 같다 — src/lib/shrinkImage.ts)
 const shrinkForShare = async (blob: Blob): Promise<ShrunkImage> => {
   try {
     return await shrinkImage(blob, IMAGE_MAX_EDGE, IMAGE_QUALITY);

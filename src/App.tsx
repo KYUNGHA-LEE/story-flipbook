@@ -4,13 +4,14 @@ import { ImageUpload } from './components/ImageUpload';
 import { FlipBook, FlipBookRef } from './components/FlipBook';
 import { ShareDialog } from './components/ShareDialog';
 import { MySiteGuide } from './components/MySiteGuide';
-import { BookOpen, RefreshCw, AlertCircle, Download, FolderOpen, Link2 } from 'lucide-react';
+import { BookOpen, RefreshCw, AlertCircle, Download, Link2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { BookPage, filesToPages, revokePages, savePagesAsJson, loadPagesFromJson, isJsonFile } from './lib/bookFile';
+import { BookPage, filesToPages, revokePages } from './lib/bookFile';
+import { savePagesAsHtml } from './lib/bookHtml';
 import { idFromLocation, isShareAvailable, loadSharedBook, ShareError, shareErrorText, type SharedInfo } from './lib/shareBook';
 
 // 머리글 오른쪽에 보이는 수정 날짜. 앱을 고칠 때마다 그날 날짜로 바꾼다.
-const UPDATED_DATE = '2026.11.18';
+const UPDATED_DATE = '2026.11.20';
 
 // 파일 크기를 "3.2MB" / "850KB" 처럼 보여 준다
 const formatSize = (bytes: number) =>
@@ -65,11 +66,10 @@ export class ErrorBoundary extends React.Component<any, any> {
 export default function App() {
   const [pages, setPages] = useState<BookPage[]>([]);
   const [isReady, setIsReady] = useState(false);
-  const [busy, setBusy] = useState<'save' | 'load' | null>(null);
-  const [saveProgress, setSaveProgress] = useState<string | null>(null); // JSON 저장 중 "줄인 쪽/전체 쪽"
+  const [busy, setBusy] = useState<'save' | null>(null);
+  const [saveProgress, setSaveProgress] = useState<string | null>(null); // HTML 저장 중 "줄인 쪽/전체 쪽"
   const [notice, setNotice] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
   const flipBookRef = useRef<FlipBookRef>(null);
-  const loadInputRef = useRef<HTMLInputElement>(null);
 
   // 링크 공유: shared = 지금 열린 책의 링크(내가 방금 만들었거나, 링크로 들어와서 연 책)
   const [shared, setShared] = useState<SharedInfo | null>(null);
@@ -134,13 +134,7 @@ export default function App() {
   const handleImagesSelected = (files: File[]) => {
     const imageFiles = files.filter(file => file.type.startsWith('image/'));
     if (imageFiles.length === 0) {
-      // 업로드 상자에 저장한 책(JSON)을 넣은 경우: 거절하지 않고 그 책을 연다
-      const jsonFile = files.find(isJsonFile);
-      if (jsonFile) {
-        void loadBookFile(jsonFile);
-        return;
-      }
-      setNotice({ type: 'error', text: '이미지 파일이나 저장한 책(JSON) 파일을 선택해 주세요.' });
+      setNotice({ type: 'error', text: '이미지 파일을 선택해 주세요.' });
       return;
     }
     setNotice(null);
@@ -155,16 +149,16 @@ export default function App() {
     replacePages([]);
   };
 
-  // 지금 책을 JSON 파일로 저장 (그림은 화면에 알맞은 크기로 줄여 담는다)
+  // 지금 책을 HTML 파일 하나로 저장 (그림은 화면에 알맞은 크기로 줄여 담는다). 받은 파일을 열면 책이 바로 펼쳐진다.
   const handleSave = async () => {
     if (busy || pages.length === 0) return;
     setBusy('save');
     setNotice(null);
     try {
-      const { bytes } = await savePagesAsJson(pages, (done, total) => setSaveProgress(`${done}/${total}`));
+      const { bytes } = await savePagesAsHtml(pages, (done, total) => setSaveProgress(`${done}/${total}`));
       setNotice({
         type: 'success',
-        text: `${pages.length}장짜리 책을 JSON 파일(${formatSize(bytes)})로 저장했습니다. 다운로드 폴더를 확인해 주세요.`,
+        text: `${pages.length}장짜리 책을 HTML 파일(${formatSize(bytes)})로 저장했습니다. 다운로드 폴더에서 그 파일을 두 번 누르면 책이 열립니다.`,
       });
     } catch (err) {
       setNotice({ type: 'error', text: err instanceof Error ? err.message : '저장하지 못했습니다.' });
@@ -172,36 +166,6 @@ export default function App() {
       setBusy(null);
       setSaveProgress(null);
     }
-  };
-
-  // 저장해 둔 JSON 파일 하나를 열어 책으로 펼친다 ([불러오기] 버튼과 업로드 상자가 함께 쓴다)
-  const loadBookFile = async (file: File) => {
-    if (busy) return;
-    setBusy('load');
-    setNotice(null);
-    try {
-      const { pages: loaded, incomplete } = await loadPagesFromJson(file);
-      forgetShared();
-      replacePages(loaded);
-      if (incomplete) {
-        // 끝이 잘린 파일: 온전한 쪽까지만 열렸다는 것을 분명히 알린다
-        setNotice({
-          type: 'error',
-          text: `끝까지 받아지지 않은 파일입니다. 온전한 ${loaded.length}쪽까지만 열었고, ${loaded.length + 1}쪽부터는 파일에 없습니다. 책 전체를 보려면 파일을 다시 받아 주세요.`,
-        });
-      }
-    } catch (err) {
-      setNotice({ type: 'error', text: err instanceof Error ? err.message : '불러오지 못했습니다.' });
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  // [불러오기] 버튼으로 고른 JSON 파일
-  const handleLoadFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = ''; // 같은 파일을 다시 골라도 불러오기가 동작하도록 초기화
-    if (file) void loadBookFile(file);
   };
 
   // 키보드 네비게이션 지원
@@ -238,26 +202,17 @@ export default function App() {
           </h1>
         </div>
 
-        {/* 저장해 둔 JSON 을 고르는 입력창 (업로드 화면·책 보기 화면의 불러오기 버튼이 함께 사용) */}
-        <input
-          ref={loadInputRef}
-          type="file"
-          accept=".json,application/json"
-          onChange={handleLoadFile}
-          className="hidden"
-        />
-
         <div className="order-last w-full flex flex-wrap items-center gap-3 md:order-none md:w-auto empty:hidden">
           {isReady && (
             <>
               <button
                 onClick={handleSave}
                 disabled={busy !== null}
-                title="그림을 화면에 알맞은 크기로 줄여 파일 하나로 저장합니다"
+                title="책을 HTML 파일 하나로 저장합니다. 받은 파일을 두 번 누르면 책이 열립니다 (그림은 화면에 알맞은 크기로 줄여 담습니다)"
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 border border-blue-600 rounded-lg text-sm font-medium text-white hover:bg-blue-700 transition-all shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <Download className="w-4 h-4" />
-                {busy === 'save' ? `저장 중...${saveProgress ? ` ${saveProgress}` : ''}` : 'JSON으로 저장'}
+                {busy === 'save' ? `저장 중...${saveProgress ? ` ${saveProgress}` : ''}` : 'HTML로 저장'}
               </button>
               {(shareEnabled || shared) && (
                 <button
@@ -269,14 +224,6 @@ export default function App() {
                   {shared ? '링크 보기' : '링크 만들기'}
                 </button>
               )}
-              <button
-                onClick={() => loadInputRef.current?.click()}
-                disabled={busy !== null}
-                className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-blue-600 transition-all shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                <FolderOpen className="w-4 h-4" />
-                {busy === 'load' ? '불러오는 중...' : '불러오기'}
-              </button>
               <button
                 onClick={handleReset}
                 disabled={busy !== null}
@@ -358,18 +305,6 @@ export default function App() {
               </div>
 
               <ImageUpload onImagesSelected={handleImagesSelected} />
-
-              <div className="flex flex-col items-center gap-2 -mt-2">
-                <button
-                  onClick={() => loadInputRef.current?.click()}
-                  disabled={busy !== null}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-blue-600 transition-all shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  <FolderOpen className="w-4 h-4" />
-                  {busy === 'load' ? '불러오는 중...' : '저장한 책(JSON) 불러오기'}
-                </button>
-                <p className="text-xs text-slate-400">책을 만든 뒤 "JSON으로 저장"으로 내려받은 파일을 다시 열 수 있습니다.</p>
-              </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8 w-full max-w-4xl">
                 {[

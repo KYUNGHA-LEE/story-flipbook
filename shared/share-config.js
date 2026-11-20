@@ -9,5 +9,5 @@ export const MAX_BOOK_BYTES = 20 * 1024 * 1024;        // 책 한 권 최대 20M
 export const RETENTION_DAYS = 30;                      // 올린 날부터 보관하는 날수. 지나면 지운다
 export const STORE_LIMIT_BYTES = 800 * 1024 * 1024;    // 저장소가 이만큼 차면 새 링크를 받지 않는다 (무료 한도 1GB 전에 멈춤)
 
-export const IMAGE_MAX_EDGE = 1400;                    // 링크로 올릴 때와 JSON으로 저장할 때 그림의 긴 변을 이 크기(px) 이하로 줄인다
+export const IMAGE_MAX_EDGE = 1400;                    // 링크로 올릴 때와 HTML로 저장할 때 그림의 긴 변을 이 크기(px) 이하로 줄인다
 export const IMAGE_QUALITY = 0.82;                     // 줄인 그림의 JPEG 품질 (링크·JSON 저장 공통)
